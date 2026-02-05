@@ -1,5 +1,5 @@
 name: Build Electron App
-on: [push] # Isso faz o GitHub trabalhar toda vez que você enviar código
+on: [push]
 
 jobs:
   build:
@@ -22,3 +22,9 @@ jobs:
         run: npx electron-builder --windows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GhostPixelAI-App
+          path: dist/*.exe  # Isso vai pegar o instalador que ele criou
