@@ -16,7 +16,7 @@
             overflow: hidden;
         }
 
-        /* Barra lateral branca com sombra sutil de separação */
+        /* Barra lateral branca com separação subtil */
         .sidebar {
             background-color: #ffffff;
             border-right: 1px solid #f0f0f0;
@@ -24,9 +24,10 @@
             height: 100vh;
             display: flex;
             flex-direction: column;
+            z-index: 20;
         }
 
-        /* Logo exatamente como na imagem */
+        /* Logo quadrado preto */
         .ghost-square {
             background-color: #000;
             border-radius: 12px;
@@ -48,6 +49,7 @@
             letter-spacing: 0.05em;
             text-transform: uppercase;
             transition: all 0.2s;
+            text-align: center;
         }
 
         .btn-new-project:hover {
@@ -60,20 +62,32 @@
         #chat-window {
             flex: 1;
             overflow-y: auto;
-            padding: 40px;
+            padding: 60px 40px;
             background-color: #ffffff;
+            scroll-behavior: smooth;
         }
 
         /* Input flutuante estilo pílula */
+        .chat-container-wrapper {
+            padding: 20px 40px 40px 40px;
+            background: linear-gradient(to top, white 60%, transparent);
+        }
+
         .chat-container {
             max-width: 800px;
-            width: 90%;
-            margin: 0 auto 40px auto;
+            width: 100%;
+            margin: 0 auto;
             background-color: #f5f5f5;
             border-radius: 40px;
             display: flex;
             align-items: center;
             padding: 8px 12px;
+            border: 1px solid transparent;
+            transition: border-color 0.2s;
+        }
+
+        .chat-container:focus-within {
+            border-color: #e0e0e0;
         }
 
         .chat-input {
@@ -97,11 +111,16 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: transform 0.2s;
+            transition: transform 0.2s, opacity 0.2s;
         }
 
-        .send-btn:hover {
+        .send-btn:hover:not(:disabled) {
             transform: scale(1.05);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
         }
 
         /* Itens de projeto na sidebar */
@@ -109,22 +128,68 @@
             font-size: 13px;
             font-weight: 500;
             color: #666;
-            padding: 10px 0;
+            padding: 10px 12px;
             cursor: pointer;
-            transition: color 0.2s;
+            transition: all 0.2s;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .project-item:hover {
+            background-color: #f9f9f9;
             color: #000;
         }
 
         .project-item.active {
             color: #000;
             font-weight: 700;
+            background-color: #f5f5f5;
+        }
+
+        /* Balões de Mensagem */
+        .message {
+            margin-bottom: 24px;
+            max-width: 85%;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background-color: #000;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 20px 20px 4px 20px;
+        }
+
+        .message.ai {
+            align-self: flex-start;
+            color: #1a1a1a;
+            padding: 0; /* Estilo clean sem balão para a IA como em apps modernos */
+        }
+
+        /* Notificação de Erro */
+        #error-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: #ff4b4b;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 100;
+            display: none;
         }
     </style>
 </head>
 <body class="flex">
+
+    <div id="error-banner"></div>
 
     <!-- Sidebar -->
     <aside class="sidebar p-8">
@@ -141,35 +206,42 @@
             </div>
         </div>
 
-        <!-- Seção Projetos -->
-        <div class="flex flex-col gap-6">
+        <!-- Secção Projetos -->
+        <div class="flex flex-col gap-6 flex-1 overflow-hidden">
             <h3 class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">Projetos Ativos</h3>
             
             <button id="add-project-btn" class="btn-new-project">
                 + Novo Projeto
             </button>
 
-            <nav id="project-list" class="flex flex-col gap-2">
+            <nav id="project-list" class="flex flex-col gap-1 overflow-y-auto pr-2">
                 <!-- Inserido via JS -->
-                <div class="project-item active">Workspace Inicial</div>
             </nav>
         </div>
 
         <!-- Status Footer -->
-        <div class="mt-auto flex items-center gap-2">
-            <div class="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-            <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Ghost Cloud Online</span>
+        <div class="mt-8 flex items-center gap-2 pt-6 border-t border-gray-50">
+            <div id="status-dot" class="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
+            <span id="status-text" class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">A ligar...</span>
         </div>
     </aside>
 
     <!-- Main Chat Area -->
     <main class="flex-1 flex flex-col h-screen">
-        <!-- Janela de Mensagens (Vazia inicialmente como na imagem) -->
-        <div id="chat-window"></div>
+        <div id="chat-window" class="flex flex-col">
+            <!-- As mensagens aparecem aqui -->
+        </div>
 
-        <!-- Input Area Arredondada (Pílula) -->
-        <div class="w-full">
-            <div class="chat-container shadow-sm border border-gray-100">
+        <!-- Loading Indicator -->
+        <div id="loading" class="hidden px-10 pb-4 flex gap-1.5">
+            <div class="w-1.5 h-1.5 bg-black rounded-full animate-bounce"></div>
+            <div class="w-1.5 h-1.5 bg-black rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+            <div class="w-1.5 h-1.5 bg-black rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+        </div>
+
+        <!-- Input Area Arredondada -->
+        <div class="chat-container-wrapper">
+            <div class="chat-container">
                 <textarea 
                     id="user-input" 
                     placeholder="Escreva aqui..." 
@@ -187,14 +259,258 @@
     </main>
 
     <!-- Modal de Configuração -->
-    <div id="config-modal" class="hidden fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
-        <div class="bg-white p-12 rounded-[40px] shadow-2xl border border-gray-100 max-w-sm w-full text-center">
-            <h3 class="text-xl font-bold mb-6">Configuração</h3>
+    <div id="config-modal" class="hidden fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white p-8 md:p-12 rounded-[40px] shadow-2xl border border-gray-100 max-w-sm w-full text-center">
+            <h3 class="text-xl font-bold mb-2">Configuração</h3>
+            <p class="text-xs text-gray-400 mb-8 uppercase tracking-widest">Insira a sua chave API Gemini</p>
             <input type="password" id="api-key-input" placeholder="Chave Gemini" class="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm focus:ring-1 ring-black mb-6">
-            <button id="save-config" class="w-full bg-black text-white rounded-2xl py-4 font-bold text-sm">Salvar</button>
+            <button id="save-config" class="w-full bg-black text-white rounded-2xl py-4 font-bold text-sm hover:opacity-90 transition-opacity">Confirmar</button>
         </div>
     </div>
 
-    <script type="module" src="renderer.js"></script>
+    <!-- Scripts do Firebase e Lógica -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, doc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Variáveis de Ambiente
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'ghost-pixel-default';
+        const firebaseConfig = JSON.parse(__firebase_config);
+        
+        // Inicialização
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let user = null;
+        let currentPid = localStorage.getItem('ghost_last_pid');
+        let apiKey = localStorage.getItem('ghost_gemini_key');
+        let unsubscribeMessages = null;
+
+        // Elementos DOM
+        const chatWindow = document.getElementById('chat-window');
+        const projectList = document.getElementById('project-list');
+        const userInput = document.getElementById('user-input');
+        const actionBtn = document.getElementById('action-btn');
+        const configModal = document.getElementById('config-modal');
+        const loading = document.getElementById('loading');
+        const errorBanner = document.getElementById('error-banner');
+
+        function showError(msg) {
+            errorBanner.innerText = msg;
+            errorBanner.style.display = 'block';
+            setTimeout(() => { errorBanner.style.display = 'none'; }, 5000);
+        }
+
+        // --- AUTHENTICATION (RULE 3) ---
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                showError("Erro de Configuração Firebase: " + err.message);
+            }
+        }
+
+        onAuthStateChanged(auth, (u) => {
+            user = u;
+            if (u) {
+                document.getElementById('status-dot').classList.replace('bg-gray-300', 'bg-green-500');
+                document.getElementById('status-text').innerText = "Ghost Cloud Online";
+                syncProjects();
+            }
+        });
+
+        // --- FIRESTORE LOGIC ---
+        function syncProjects() {
+            if (!user) return;
+            const ref = collection(db, 'artifacts', appId, 'users', user.uid, 'projects');
+            
+            onSnapshot(ref, (snap) => {
+                const projects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                renderProjects(projects);
+                
+                if (projects.length === 0) {
+                    createNewProject("Workspace Inicial");
+                } else if (!currentPid || !projects.find(p => p.id === currentPid)) {
+                    switchProject(projects[0].id);
+                } else {
+                    switchProject(currentPid);
+                }
+            }, (err) => showError("Erro ao carregar projetos: " + err.message));
+        }
+
+        async function createNewProject(name) {
+            if (!user) return;
+            const ref = collection(db, 'artifacts', appId, 'users', user.uid, 'projects');
+            const docRef = await addDoc(ref, { 
+                name, 
+                createdAt: serverTimestamp() 
+            });
+            switchProject(docRef.id);
+        }
+
+        function switchProject(pid) {
+            currentPid = pid;
+            localStorage.setItem('ghost_last_pid', pid);
+            loadMessages(pid);
+            // Atualizar UI da sidebar
+            document.querySelectorAll('.project-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.id === pid);
+            });
+        }
+
+        function renderProjects(projects) {
+            projectList.innerHTML = '';
+            projects.forEach(p => {
+                const div = document.createElement('div');
+                div.className = `project-item ${p.id === currentPid ? 'active' : ''}`;
+                div.dataset.id = p.id;
+                div.innerHTML = `
+                    <span class="truncate">${p.name}</span>
+                    <button class="delete-proj opacity-0 hover:text-red-500 p-1" data-id="${p.id}">×</button>
+                `;
+                div.onclick = (e) => {
+                    if (e.target.classList.contains('delete-proj')) return;
+                    switchProject(p.id);
+                };
+                
+                div.querySelector('.delete-proj').onclick = async (e) => {
+                    e.stopPropagation();
+                    const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'projects', p.id);
+                    await deleteDoc(ref);
+                };
+                
+                div.onmouseover = () => div.querySelector('.delete-proj').style.opacity = '1';
+                div.onmouseout = () => div.querySelector('.delete-proj').style.opacity = '0';
+                
+                projectList.appendChild(div);
+            });
+        }
+
+        function loadMessages(pid) {
+            if (!user) return;
+            if (unsubscribeMessages) unsubscribeMessages();
+
+            const ref = collection(db, 'artifacts', appId, 'users', user.uid, 'projects', pid, 'messages');
+            const q = query(ref, orderBy('createdAt', 'asc'));
+
+            unsubscribeMessages = onSnapshot(q, (snap) => {
+                chatWindow.innerHTML = '';
+                snap.docs.forEach(d => {
+                    const msg = d.data();
+                    renderMessage(msg.content, msg.role);
+                });
+                chatWindow.scrollTo(0, chatWindow.scrollHeight);
+            }, (err) => showError("Erro ao carregar mensagens: " + err.message));
+        }
+
+        function renderMessage(content, role) {
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            
+            if (role === 'ai') {
+                // Formatação simples de Markdown (apenas quebras de linha e negrito)
+                div.innerHTML = content.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            } else {
+                div.innerText = content;
+            }
+            
+            chatWindow.appendChild(div);
+        }
+
+        // --- GEMINI API ---
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text || !user) return;
+
+            if (!apiKey) {
+                configModal.classList.remove('hidden');
+                return;
+            }
+
+            userInput.value = '';
+            userInput.style.height = 'auto';
+            
+            const msgRef = collection(db, 'artifacts', appId, 'users', user.uid, 'projects', currentPid, 'messages');
+            
+            // Salvar mensagem do utilizador
+            await addDoc(msgRef, {
+                role: 'user',
+                content: text,
+                createdAt: serverTimestamp()
+            });
+
+            loading.classList.remove('hidden');
+            actionBtn.disabled = true;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: text }] }]
+                    })
+                });
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+
+                const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Lamento, não consegui processar a resposta.";
+
+                await addDoc(msgRef, {
+                    role: 'ai',
+                    content: aiResponse,
+                    createdAt: serverTimestamp()
+                });
+            } catch (err) {
+                showError("Erro na API: " + err.message);
+                await addDoc(msgRef, {
+                    role: 'ai',
+                    content: "Erro ao comunicar com a IA. Verifica a tua API Key.",
+                    createdAt: serverTimestamp()
+                });
+            } finally {
+                loading.classList.add('hidden');
+                actionBtn.disabled = false;
+                chatWindow.scrollTo(0, chatWindow.scrollHeight);
+            }
+        }
+
+        // --- EVENT LISTENERS ---
+        document.getElementById('add-project-btn').onclick = () => {
+            const name = prompt("Nome do Novo Projeto:", "Novo Workspace");
+            if (name) createNewProject(name);
+        };
+
+        document.getElementById('save-config').onclick = () => {
+            const val = document.getElementById('api-key-input').value.trim();
+            if (val) {
+                apiKey = val;
+                localStorage.setItem('ghost_gemini_key', val);
+                configModal.classList.add('hidden');
+            }
+        };
+
+        actionBtn.onclick = sendMessage;
+        userInput.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        };
+
+        userInput.oninput = function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        };
+
+        // Iniciar
+        initAuth();
+    </script>
 </body>
 </html>
