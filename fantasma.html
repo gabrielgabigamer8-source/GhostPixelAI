@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            background-color: #000; /* Fundo Preto */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* O FANTASMA EM PIXEL ART (APENAS SCRIPT/CSS) */
+        .ghost-pixel {
+            width: 10px;
+            height: 10px;
+            background: transparent;
+            /* Desenho do Fantasma */
+            box-shadow: 
+                30px 0px #fff, 40px 0px #fff, 50px 0px #fff,
+                20px 10px #fff, 30px 10px #fff, 40px 10px #fff, 50px 10px #fff, 60px 10px #fff,
+                10px 20px #fff, 70px 20px #fff, 10px 30px #fff, 70px 30px #fff,
+                10px 40px #fff, 70px 40px #fff, 10px 50px #fff, 70px 50px #fff,
+                10px 60px #fff, 30px 60px #fff, 50px 60px #fff, 70px 60px #fff; 
+            transform: scale(4); /* Deixa o fantasma grande */
+            animation: float 2s ease-in-out infinite;
+        }
+
+        /* Animação para ele flutuar */
+        @keyframes float {
+            0%, 100% { transform: scale(4) translateY(0); }
+            50% { transform: scale(4) translateY(-20px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="ghost-pixel"></div>
+</body>
+</html>
