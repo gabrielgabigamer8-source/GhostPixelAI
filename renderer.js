@@ -1,126 +1,233 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { 
+    getAuth, 
+    signInAnonymously, 
+    onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { 
+    getFirestore, 
+    collection, 
+    onSnapshot, 
+    addDoc, 
+    serverTimestamp, 
+    query, 
+    orderBy, 
+    doc, 
+    updateDoc 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// --- CONFIGURAÇÃO ---
-// Substitui pelos teus dados reais se não estiveres a usar o ambiente simulado
-const firebaseConfig = JSON.parse(__firebase_config);
+/** * CONFIGURAÇÃO DE PRODUÇÃO
+ * Substitui os valores abaixo pelos dados do teu projeto no Firebase Console
+ * (Project Settings -> Your Apps -> Web App)
+ */
+const firebaseConfig = {
+    apiKey: "A_TUA_API_KEY_AQUI",
+    authDomain: "O_TEU_PROJETO.firebaseapp.com",
+    projectId: "O_TEU_ID_PROJETO",
+    storageBucket: "O_TEU_PROJETO.appspot.com",
+    messagingSenderId: "000000000000",
+    appId: "1:000000000000:web:abcdefg"
+};
+
+const appId = 'ghost-pixel-ia-prod';
+
+// Inicialização dos Serviços
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'ghost-pixel-ia';
 
-let user = null;
+// Estado da Aplicação
+let currentUser = null;
 let currentProjectId = localStorage.getItem('ghost_pid');
-let userApiKey = localStorage.getItem('ghost_key') || '';
+let geminiApiKey = localStorage.getItem('ghost_gemini_key') || '';
 
-// --- ELEMENTOS DO DASHBOARD (Baseados na tua imagem) ---
-const projectList = document.querySelector('.flex-1.overflow-y-auto'); // Onde ficam os projetos
-const newProjectBtn = document.querySelector('.border-dashed'); // O botão "+ NOVO PROJETO"
-const chatWindow = document.getElementById('chat-window') || document.querySelector('main > div:nth-child(2)');
-const userInput = document.querySelector('textarea'); 
+// Seleção de Elementos (Baseado no teu design de dashboard)
+const projectList = document.querySelector('.flex-1.overflow-y-auto');
+const newProjectBtn = document.querySelector('button.border-dashed');
+const chatWindow = document.getElementById('chat-window');
+const userInput = document.querySelector('textarea');
 const sendBtn = document.querySelector('button svg')?.parentElement;
+const loadingIndicator = document.getElementById('loading-ui'); // Caso tenhas um loader
 
-// --- INICIALIZAÇÃO ---
-async function startApp() {
-    await signInAnonymously(auth);
-    onAuthStateChanged(auth, (u) => {
-        if (u) {
-            user = u;
-            syncProjects();
+/**
+ * INICIALIZAÇÃO E AUTENTICAÇÃO
+ */
+async function initApp() {
+    try {
+        await signInAnonymously(auth);
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                observeProjects();
+            }
+        });
+    } catch (error) {
+        console.error("Falha na autenticação:", error);
+    }
+}
+
+/**
+ * GESTÃO DE WORKSPACES/PROJETOS
+ */
+function observeProjects() {
+    if (!currentUser) return;
+    
+    const projectsRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'projects');
+    const q = query(projectsRef, orderBy('timestamp', 'desc'));
+
+    onSnapshot(q, (snapshot) => {
+        if (!projectList) return;
+        projectList.innerHTML = '';
+        
+        const projects = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Criar projeto inicial se a lista estiver vazia
+        if (projects.length === 0) {
+            createProject("Meu Workspace");
+            return;
+        }
+
+        projects.forEach(project => renderProjectItem(project));
+
+        // Manter o projeto atual selecionado
+        if (!currentProjectId || !projects.find(p => p.id === currentProjectId)) {
+            switchProject(projects[0].id);
+        } else {
+            loadChatHistory(currentProjectId);
         }
     });
 }
 
-// --- FUNÇÃO PARA CRIAR PROJETO ---
-async function createNewProject(name) {
-    if (!user) return;
-    const ref = collection(db, 'artifacts', appId, 'users', user.uid, 'projects');
-    const d = await addDoc(ref, { name, timestamp: serverTimestamp() });
-    selectProject(d.id);
+async function createProject(name) {
+    const ref = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'projects');
+    const newDoc = await addDoc(ref, { name, timestamp: serverTimestamp() });
+    switchProject(newDoc.id);
 }
 
-// --- FUNÇÃO PARA RENOMEAR PROJETO ---
 async function renameProject(id, newName) {
-    const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'projects', id);
+    const ref = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'projects', id);
     await updateDoc(ref, { name: newName });
 }
 
-function selectProject(id) {
+function switchProject(id) {
     currentProjectId = id;
     localStorage.setItem('ghost_pid', id);
-    loadMessages(id);
+    loadChatHistory(id);
 }
 
-// --- SINCRONIZAÇÃO DA SIDEBAR ---
-function syncProjects() {
-    const ref = collection(db, 'artifacts', appId, 'users', user.uid, 'projects');
-    const q = query(ref, orderBy('timestamp', 'desc'));
+function renderProjectItem(project) {
+    const isActive = project.id === currentProjectId;
+    const container = document.createElement('div');
+    container.className = `relative group mb-2 p-4 rounded-xl cursor-pointer transition-all border ${isActive ? 'bg-black text-white border-black' : 'hover:bg-gray-100 border-transparent text-gray-700'}`;
+    
+    container.innerHTML = `<span class="truncate block pr-8 font-medium">${project.name}</span>`;
+    container.onclick = () => switchProject(project.id);
 
-    onSnapshot(q, (snap) => {
-        if (!projectList) return;
-        projectList.innerHTML = '';
-        const projects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const editBtn = document.createElement('button');
+    editBtn.className = 'absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-blue-500';
+    editBtn.innerHTML = '✎';
+    editBtn.onclick = (e) => {
+        e.stopPropagation();
+        const n = prompt("Renomear Workspace:", project.name);
+        if (n && n.trim()) renameProject(project.id, n.trim());
+    };
 
-        projects.forEach(p => {
-            const container = document.createElement('div');
-            container.className = `relative group mb-2 p-4 rounded-xl cursor-pointer transition-all ${p.id === currentProjectId ? 'bg-black text-white' : 'hover:bg-gray-100'}`;
-            container.innerHTML = `<span class="truncate block pr-8">${p.name}</span>`;
-            
-            container.onclick = () => selectProject(p.id);
-
-            // Botão de Editar (Lápis)
-            const editBtn = document.createElement('button');
-            editBtn.className = 'absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 text-gray-400';
-            editBtn.innerHTML = '✎';
-            editBtn.onclick = (e) => {
-                e.stopPropagation();
-                const n = prompt("Novo nome:", p.name);
-                if (n) renameProject(p.id, n);
-            };
-
-            container.appendChild(editBtn);
-            projectList.appendChild(container);
-        });
-    });
+    container.appendChild(editBtn);
+    projectList.appendChild(container);
 }
 
-// --- CARREGAR MENSAGENS ---
-function loadMessages(pid) {
-    if (!chatWindow || !pid) return;
-    const ref = collection(db, 'artifacts', appId, 'users', user.uid, 'projects', pid, 'messages');
+/**
+ * LÓGICA DE MENSAGENS E INTEGRAÇÃO IA
+ */
+function loadChatHistory(projectId) {
+    if (!chatWindow || !projectId || !currentUser) return;
+
+    const ref = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'projects', projectId, 'messages');
     const q = query(ref, orderBy('timestamp', 'asc'));
 
-    onSnapshot(q, (snap) => {
+    onSnapshot(q, (snapshot) => {
         chatWindow.innerHTML = '';
-        snap.docs.forEach(d => {
-            const m = d.data();
-            const div = document.createElement('div');
-            div.className = `flex mb-4 ${m.role === 'user' ? 'justify-end' : 'justify-start'} message-fade`;
-            div.innerHTML = `<div class="p-4 rounded-2xl max-w-[80%] ${m.role === 'user' ? 'bg-black text-white' : 'bg-gray-100'}">${m.content}</div>`;
-            chatWindow.appendChild(div);
+        snapshot.docs.forEach(d => {
+            const msg = d.data();
+            appendMessageToUI(msg.role, msg.content);
         });
-        chatWindow.scrollTo(0, chatWindow.scrollHeight);
+        chatWindow.scrollTo({ top: chatWindow.scrollHeight, behavior: 'smooth' });
     });
 }
 
-// --- EVENTOS DE CLIQUE ---
+function appendMessageToUI(role, content) {
+    const wrapper = document.createElement('div');
+    wrapper.className = `flex w-full mb-6 animate-in fade-in slide-in-from-bottom-2 ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+    
+    const bubble = document.createElement('div');
+    bubble.className = `p-4 rounded-2xl max-w-[75%] shadow-sm ${role === 'user' ? 'bg-black text-white' : 'bg-gray-100 text-black border border-gray-200'}`;
+    bubble.innerText = content;
+    
+    wrapper.appendChild(bubble);
+    chatWindow.appendChild(wrapper);
+}
+
+async function handleChatSubmission() {
+    const message = userInput.value.trim();
+    if (!message || !currentProjectId) return;
+    
+    // Se não houver chave API, pedir ao utilizador
+    if (!geminiApiKey) {
+        const key = prompt("Por favor, insere a tua Gemini API Key para continuar:");
+        if (!key) return;
+        geminiApiKey = key;
+        localStorage.setItem('ghost_gemini_key', key);
+    }
+
+    userInput.value = '';
+    const ref = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'projects', currentProjectId, 'messages');
+
+    try {
+        // 1. Salvar mensagem do utilizador
+        await addDoc(ref, { role: 'user', content: message, timestamp: serverTimestamp() });
+
+        // 2. Chamar API do Gemini
+        if (loadingIndicator) loadingIndicator.classList.remove('hidden');
+        
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${geminiApiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: message }] }] })
+        });
+
+        const data = await response.json();
+        const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro: Não foi possível obter resposta da IA.";
+
+        // 3. Salvar resposta da IA
+        await addDoc(ref, { role: 'ai', content: aiText, timestamp: serverTimestamp() });
+
+    } catch (error) {
+        console.error("Erro no fluxo de chat:", error);
+    } finally {
+        if (loadingIndicator) loadingIndicator.classList.add('hidden');
+    }
+}
+
+/**
+ * EVENT LISTENERS
+ */
 if (newProjectBtn) {
     newProjectBtn.onclick = () => {
-        const name = prompt("Nome do Novo Projeto:");
-        if (name) createNewProject(name);
+        const name = prompt("Nome do Novo Workspace:");
+        if (name && name.trim()) createProject(name.trim());
     };
 }
 
-if (sendBtn) {
-    sendBtn.onclick = async () => {
-        const text = userInput.value.trim();
-        if (!text || !currentProjectId) return;
-        userInput.value = '';
-        const ref = collection(db, 'artifacts', appId, 'users', user.uid, 'projects', currentProjectId, 'messages');
-        await addDoc(ref, { role: 'user', content: text, timestamp: serverTimestamp() });
-        // Aqui chamarias a API do Gemini com o fetch
+if (sendBtn) sendBtn.onclick = handleChatSubmission;
+
+if (userInput) {
+    userInput.onkeydown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleChatSubmission();
+        }
     };
 }
 
-startApp();
+// Iniciar Aplicação
+initApp();
