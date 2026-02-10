@@ -1,8 +1,11 @@
 {
-  "name": "ghostpixelai",
+  "name": "vyro",
   "version": "1.0.0",
   "main": "main.js",
   "scripts": {
     "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^28.0.0"
   }
 }
